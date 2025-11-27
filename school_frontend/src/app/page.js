@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/card"
 import { ArrowUpIcon, ArrowDownIcon } from "lucide-react";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { Dialog } from "@/components/ui/dialog";
+import { Pagination } from "@/components/ui/pagination";
 
 const API_BASE_URL = "http://localhost:8000";
 
@@ -33,10 +35,13 @@ export default function Home() {
   const [students, setStudents] = useState([]);
   const [query, setQuery] = useState("");
   const [ordering, setOrdering] = useState("full_name")
+  const [pageData, setPageData] = useState(null);
+  const [page, setPage] = useState(1);
+  const [openCreate, setOpenCreate] = useState(false);
 
   const loadStudents = async () => {
     console.log("Haciendo búsqueda de... ", query)
-    const url = `${API_BASE_URL}/students/?search=${query}&ordering=${ordering}`
+    const url = `${API_BASE_URL}/students/?search=${encodeURIComponent(query)}&ordering=${ordering}&page=${page}`
     const res = await fetch(url);
     const data = await res.json();
     return data;
@@ -54,9 +59,16 @@ export default function Home() {
 
   useEffect(() => {
     loadStudents().then((data) => {
-      setStudents(data);
+      // DRF paginated response has {count, next, previous, results}
+      if (data?.results) {
+        setStudents(data.results);
+        setPageData({ next: data.next, previous: data.previous, count: data.count });
+      } else {
+        setStudents(data);
+        setPageData(null);
+      }
     });
-  }, [query, ordering]);
+  }, [query, ordering, page]);
 
   const onSubmit = async (data) => {
     console.log("Submitting data: ", data);
@@ -70,12 +82,13 @@ export default function Home() {
     )
     if (response.ok) {
       const newStudent = await response.json();
+      // reload current page
       loadStudents().then((data) => {
-      setStudents(data);
-    });
-      // setStudents([newStudent,...students]);
+        if (data?.results) setStudents(data.results)
+        else setStudents(data)
+      });
       toast.success("Estudiante agregado con éxito");
-
+      setOpenCreate(false);
     }
     else {
       const errorData = await response.json();
@@ -107,44 +120,55 @@ export default function Home() {
           <Button variant="outline" onClick={() => { orderingClickHandler("code_button") }}>
             {ordering === 'code' ? <ArrowDownIcon /> : <ArrowUpIcon />}
           </Button>
+          <div className="ml-auto">
+            <Button onClick={() => setOpenCreate(true)}>Crear estudiante</Button>
+          </div>
         </div>
         <hr className="h-px my-2 bg-gray-200 border-0 dark:bg-gray-700"></hr>
 
-        <div className="p-4 h-96 overflow-y-auto">
+        <div className="p-4 h-72 overflow-y-auto">
           <ul>
             {students.map((student) => (
-              <li key={student.code} className="text-md font-medium my-2 flex flex-row justify-between" title={student.email}>
-                <div>
-                  {student.full_name}
-
-                </div>
-                <div>
-                  {student.code}
-                </div>
+              <li key={student.code} className="text-md font-medium my-2 flex flex-row justify-between items-center" title={student.email}>
+                <a className="flex-1 text-primary underline" href={`/students/${student.id}`}>{student.full_name}</a>
+                <div className="ml-4">{student.code}</div>
               </li>
             ))}
           </ul>
         </div>
         <hr className="h-px my-2 bg-gray-200 border-0 dark:bg-gray-700"></hr>
-
-        <div>
-          <Field className="mt-4">
-            <FieldLabel htmlFor="full_name" >Nombre completo</FieldLabel>
-            <Input id="full_name" placeholder="Ingresa el nombre" {...register("full_name", { required: true })}></Input>
-          </Field>
-          <Field className="mt-4">
-            <FieldLabel htmlFor="email">Email</FieldLabel>
-            <Input id="email" placeholder="Ingresa el email" {...register("email", { required: true })}></Input>
-          </Field>
-          <Field className="mt-4">
-            <FieldLabel htmlFor="code">Código</FieldLabel>
-            <Input id="code" placeholder="Ingresa el código" {...register("code", { required: true })}></Input>
-          </Field>
-          <Button className="my-2" onClick={handleSubmit(onSubmit)}>
-            Agregar estudiante
-          </Button>
+        <div className="mb-4">
+          <Pagination
+            previous={pageData?.previous}
+            next={pageData?.next}
+            onPrevious={() => { if (pageData?.previous) setPage((p) => Math.max(1, p - 1)) }}
+            onNext={() => { if (pageData?.next) setPage((p) => p + 1) }}
+          />
         </div>
+
       </CardContent>
+
+      <Dialog open={openCreate} onOpenChange={setOpenCreate} title="Crear estudiante">
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <div className="grid gap-3">
+            <Field>
+              <FieldLabel htmlFor="full_name">Nombre completo</FieldLabel>
+              <Input id="full_name" {...register("full_name", { required: true })} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="email">Email</FieldLabel>
+              <Input id="email" {...register("email", { required: true })} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="code">Código</FieldLabel>
+              <Input id="code" {...register("code", { required: true })} />
+            </Field>
+            <div className="flex justify-end">
+              <Button type="submit">Crear</Button>
+            </div>
+          </div>
+        </form>
+      </Dialog>
     </Card>
 
   );
